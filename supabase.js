@@ -10,11 +10,11 @@ const STORAGE_KEYS = {
   SETTLEMENTS: 'trip_tracker_settlements',
 };
 
-// Default Sample Data for Goa Trip with 5 Friends
+// Default Sample Data for Pondi Trip with 5 Friends
 const SAMPLE_EXPENSES = [
   {
     id: 'exp-1',
-    description: 'Resort Villa Advance & Stay',
+    description: 'French Quarter Heritage Villa Stay',
     amount: 12500,
     category: 'stay',
     paid_by: 'Likhith',
@@ -31,7 +31,7 @@ const SAMPLE_EXPENSES = [
   },
   {
     id: 'exp-2',
-    description: 'Car Fuel & Highway Tolls',
+    description: 'ECR Highway Toll & Scooter Rentals (5 Scooters)',
     amount: 4500,
     category: 'travel',
     paid_by: 'Chiranth',
@@ -48,7 +48,7 @@ const SAMPLE_EXPENSES = [
   },
   {
     id: 'exp-3',
-    description: 'Beach Shack Seafood Dinner',
+    description: 'Promenade Beach French Cafe & Seafood',
     amount: 5200,
     category: 'food',
     paid_by: 'Benny',
@@ -65,7 +65,7 @@ const SAMPLE_EXPENSES = [
   },
   {
     id: 'exp-4',
-    description: 'Scuba Diving & Watersports (4 persons)',
+    description: 'Paradise Beach Boat Ride & Surfing (4 persons)',
     amount: 6000,
     category: 'activities',
     paid_by: 'Shamanth',
@@ -81,7 +81,7 @@ const SAMPLE_EXPENSES = [
   },
   {
     id: 'exp-5',
-    description: 'Special Goan Cashew & Spices for Benny',
+    description: 'Auroville Handcrafted Spices & Bakery for Benny',
     amount: 850,
     category: 'shopping',
     paid_by: 'Karthik',
@@ -283,6 +283,15 @@ class SupabaseService {
   }
 
   // Settlements
+  async getLocalSettlements() {
+    try {
+      const local = localStorage.getItem(STORAGE_KEYS.SETTLEMENTS);
+      return local ? JSON.parse(local) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   async getSettlements() {
     if (this.isConnected && this.client) {
       try {
@@ -295,8 +304,7 @@ class SupabaseService {
         console.warn('Supabase settlements fetch failed:', e);
       }
     }
-    const local = localStorage.getItem(STORAGE_KEYS.SETTLEMENTS);
-    return local ? JSON.parse(local) : [];
+    return this.getLocalSettlements();
   }
 
   async addSettlement(settlement) {
@@ -313,16 +321,22 @@ class SupabaseService {
       try {
         const { data, error } = await this.client
           .from('settlements')
-          .insert([item])
+          .insert([{
+            from_person: item.from_person,
+            to_person: item.to_person,
+            amount: item.amount,
+            notes: item.notes
+          }])
           .select()
           .single();
-        if (!error && data) item.id = data.id;
+        if (error) throw error;
+        if (data && data.id) item.id = data.id;
       } catch (e) {
         console.warn('Supabase settlement save failed:', e);
       }
     }
 
-    const current = await this.getSettlements();
+    const current = await this.getLocalSettlements();
     current.unshift(item);
     localStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(current));
     return item;
@@ -336,7 +350,7 @@ class SupabaseService {
         console.warn('Supabase settlement delete failed:', e);
       }
     }
-    const current = await this.getSettlements();
+    const current = await this.getLocalSettlements();
     const filtered = current.filter(s => s.id !== id);
     localStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(filtered));
     return true;

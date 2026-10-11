@@ -363,25 +363,87 @@ html, body {
 }
 
 .input-with-icon {
-  position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  gap: 12px;
+  transition: var(--transition);
+  position: relative;
 }
 
-.input-icon {
-  position: absolute;
-  left: 12px;
+.input-with-icon:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.input-with-icon .input-icon,
+.input-with-icon i,
+.input-with-icon svg {
   width: 18px;
   height: 18px;
   color: var(--text-muted);
+  flex-shrink: 0;
   pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  transition: color 0.2s ease;
+}
+
+.input-with-icon:focus-within .input-icon,
+.input-with-icon:focus-within i,
+.input-with-icon:focus-within svg {
+  color: var(--accent-primary);
 }
 
 .input-with-icon input {
-  padding-left: 38px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 11px 0 !important;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  font-family: var(--font-main);
+  outline: none !important;
+}
+
+/* Date input formatting */
+input[type="date"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.75;
+  filter: invert(0.85);
+  margin-right: 2px;
+  transition: opacity 0.2s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* Hide number spinner arrows for clean input */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }
 
 input[type="text"],
+input[type="number"],
 input[type="date"],
 input[type="url"],
 input[type="password"],
@@ -396,6 +458,32 @@ select {
   font-family: var(--font-main);
   outline: none;
   transition: var(--transition);
+}
+
+#settleModal .currency-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 14px;
+  gap: 8px;
+}
+
+#settleModal .currency-input-wrap .currency-symbol {
+  font-size: 1.3rem;
+  color: #34d399;
+}
+
+#settleModal .currency-input-wrap input {
+  background: transparent !important;
+  border: none !important;
+  padding: 11px 0 !important;
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  outline: none !important;
+  color: #fff;
 }
 
 input:focus, select:focus {
@@ -436,6 +524,7 @@ input:focus, select:focus {
   background-repeat: no-repeat;
   background-position: right 14px center;
   background-size: 16px;
+  padding-right: 42px !important;
   cursor: pointer;
 }
 
@@ -1125,26 +1214,52 @@ input:focus, select:focus {
 }
 
 .search-wrap {
-  position: relative;
-  flex: 1;
   display: flex;
   align-items: center;
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 12px;
+  gap: 8px;
+  transition: var(--transition);
 }
 
+.search-wrap:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.search-wrap i,
 .search-wrap svg {
-  position: absolute;
-  left: 10px;
   width: 16px;
   height: 16px;
   color: var(--text-muted);
+  flex-shrink: 0;
   pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  transition: color 0.2s ease;
+}
+
+.search-wrap:focus-within i,
+.search-wrap:focus-within svg {
+  color: var(--accent-primary);
 }
 
 .search-wrap input {
-  padding-left: 34px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 8px 0 !important;
+  color: var(--text-primary);
   font-size: 0.85rem;
+  outline: none !important;
 }
 
 #expenseCategoryFilter {
@@ -1176,6 +1291,28 @@ input:focus, select:focus {
   background: var(--bg-surface);
 }
 
+/* Settlement card in history feed */
+.transaction-card.tx-settlement-card {
+  background: rgba(16, 185, 129, 0.05);
+  border-left: 3px solid #10b981;
+}
+
+.transaction-card.tx-settlement-card:hover {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.tx-settle-icon {
+  background: rgba(16, 185, 129, 0.15) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.tx-settle-tag {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  font-weight: 700;
+}
+
 .tx-left {
   display: flex;
   align-items: center;
@@ -1192,6 +1329,7 @@ input:focus, select:focus {
   font-size: 1.1rem;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .tx-info {
@@ -1231,6 +1369,10 @@ input:focus, select:focus {
   font-weight: 700;
   font-size: 0.95rem;
   color: #ffffff;
+}
+
+.tx-amount.tx-settle-amt {
+  color: #34d399;
 }
 
 .tx-split-tag {

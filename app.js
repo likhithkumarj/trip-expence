@@ -305,10 +305,11 @@ async function refreshData() {
 
 // Render All Views
 function renderAllViews() {
-  elements.expensesCountBadge.textContent = appState.expenses.length;
+  const totalCount = appState.expenses.length + appState.settlements.length;
+  elements.expensesCountBadge.textContent = totalCount;
   elements.totalExpenseCount.textContent = appState.expenses.length;
   elements.settlementCount.textContent = appState.settlements.length;
-  elements.historyCountLabel.textContent = `${appState.expenses.length} items`;
+  elements.historyCountLabel.textContent = `${totalCount} item${totalCount !== 1 ? 's' : ''}`;
 
   renderTripOverview();
   renderCategoryBreakdown();
@@ -347,7 +348,11 @@ function calculateFinancials() {
     categorySpending[c] = 0;
   });
 
-  let totalTripSpend = 0;
+  const getCanonicalMemberName = (name) => {
+    if (!name) return null;
+    const found = GROUP_MEMBERS.find(m => m.name.toLowerCase() === String(name).trim().toLowerCase());
+    return found ? found.name : null;
+  };
 
   // Process Expenses
   appState.expenses.forEach(exp => {
@@ -359,18 +364,20 @@ function calculateFinancials() {
     categorySpending[cat] = (categorySpending[cat] || 0) + amt;
 
     // Track payer
-    if (paidAmounts[exp.paid_by] !== undefined) {
-      paidAmounts[exp.paid_by] += amt;
-      balances[exp.paid_by] += amt;
+    const payerName = getCanonicalMemberName(exp.paid_by);
+    if (payerName && paidAmounts[payerName] !== undefined) {
+      paidAmounts[payerName] += amt;
+      balances[payerName] += amt;
     }
 
     // Process splits
     if (exp.splits && exp.splits.length > 0) {
       exp.splits.forEach(s => {
         const share = parseFloat(s.share_amount) || 0;
-        if (shareAmounts[s.person_name] !== undefined) {
-          shareAmounts[s.person_name] += share;
-          balances[s.person_name] -= share;
+        const participantName = getCanonicalMemberName(s.person_name);
+        if (participantName && shareAmounts[participantName] !== undefined) {
+          shareAmounts[participantName] += share;
+          balances[participantName] -= share;
         }
       });
     } else {
@@ -386,12 +393,14 @@ function calculateFinancials() {
   // Process Settlements
   appState.settlements.forEach(st => {
     const sAmt = parseFloat(st.amount) || 0;
+    const fromMember = getCanonicalMemberName(st.from_person);
+    const toMember = getCanonicalMemberName(st.to_person);
     // FromPerson paid ToPerson => FromPerson's balance increases (+), ToPerson's decreases (-)
-    if (balances[st.from_person] !== undefined) {
-      balances[st.from_person] += sAmt;
+    if (fromMember && balances[fromMember] !== undefined) {
+      balances[fromMember] += sAmt;
     }
-    if (balances[st.to_person] !== undefined) {
-      balances[st.to_person] -= sAmt;
+    if (toMember && balances[toMember] !== undefined) {
+      balances[toMember] -= sAmt;
     }
   });
 
@@ -578,76 +587,149 @@ function renderNetBalancesAndSettlements() {
   }
 }
 
-// Render Transactions Feed
+// Render Transactions Feed (Both Expenses and Settlements)
 function renderTransactionsList() {
   elements.allTransactionsList.innerHTML = '';
 
-  let filtered = [...appState.expenses];
+  // Format expenses
+  const expenseItems = (appState.expenses || []).map(exp => ({
+    type: 'expense',
+    id: exp.id,
+    date: exp.date || (exp.created_at ? exp.created_at.split('T')[0] : ''),
+    timestamp: new Date(exp.created_at || exp.date || 0).getTime(),
+    title: exp.description,
+    subtitle: `${exp.paid_by} paid • ${exp.date || 'Today'}`,
+    amount: exp.amount,
+    category: exp.category,
+    raw: exp
+  }));
+
+  // Format settlements
+  const settlementItems = (appState.settlements || []).map(st => ({
+    type: 'settlement',
+    id: st.id,
+    date: st.created_at ? st.created_at.split('T')[0] : '',
+    timestamp: new Date(st.created_at || 0).getTime(),
+    title: `${st.from_person} ➔ ${st.to_person}`,
+    subtitle: `${st.notes || 'Settlement payment'} • ${st.created_at ? new Date(st.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : 'Today'}`,
+    amount: st.amount,
+    category: 'settlement',
+    raw: st
+  }));
+
+  // Combine and sort newest first
+  let allItems = [...expenseItems, ...settlementItems].sort((a, b) => b.timestamp - a.timestamp);
 
   // Search filter
   if (appState.searchTerm) {
     const q = appState.searchTerm.toLowerCase();
-    filtered = filtered.filter(exp => 
-      exp.description.toLowerCase().includes(q) ||
-      exp.paid_by.toLowerCase().includes(q)
-    );
+    allItems = allItems.filter(item => {
+      if (item.type === 'expense') {
+        return item.raw.description.toLowerCase().includes(q) ||
+               item.raw.paid_by.toLowerCase().includes(q);
+      } else {
+        return item.raw.from_person.toLowerCase().includes(q) ||
+               item.raw.to_person.toLowerCase().includes(q) ||
+               (item.raw.notes && item.raw.notes.toLowerCase().includes(q));
+      }
+    });
   }
 
   // Category filter
   if (appState.categoryFilter && appState.categoryFilter !== 'all') {
-    filtered = filtered.filter(exp => exp.category === appState.categoryFilter);
+    if (appState.categoryFilter === 'settlement') {
+      allItems = allItems.filter(item => item.type === 'settlement');
+    } else {
+      allItems = allItems.filter(item => item.type === 'expense' && item.category === appState.categoryFilter);
+    }
   }
 
-  if (filtered.length === 0) {
+  if (allItems.length === 0) {
     elements.allTransactionsList.innerHTML = `
       <p style="font-size: 0.8rem; color: #64748b; text-align: center; padding: 20px;">
-        No matching expenses found.
+        No matching expenses or settlements found.
       </p>
     `;
     return;
   }
 
-  filtered.forEach(exp => {
-    const cat = CATEGORIES[exp.category] || CATEGORIES.misc;
-    const splitCount = exp.splits ? exp.splits.length : 5;
-    const splitLabel = exp.split_type === 'individual' 
-      ? `1-on-1 for ${exp.splits && exp.splits[0] ? exp.splits[0].person_name : 'friend'}`
-      : `Split between ${splitCount}`;
-
+  allItems.forEach(item => {
     const card = document.createElement('div');
-    card.className = 'transaction-card';
-    card.innerHTML = `
-      <div class="tx-left">
-        <div class="tx-cat-icon">${cat.icon}</div>
-        <div class="tx-info">
-          <span class="tx-title">${escapeHtml(exp.description)}</span>
-          <span class="tx-subtitle">
-            <span class="tx-paidby-tag">${exp.paid_by}</span> paid • ${exp.date || 'Today'}
-          </span>
-        </div>
-      </div>
-      <div class="tx-right">
-        <span class="tx-amount">${formatCurrency(exp.amount)}</span>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span class="tx-split-tag">${splitLabel}</span>
-          <button class="tx-delete-btn" title="Delete expense" data-id="${exp.id}">
-            <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
-          </button>
-        </div>
-      </div>
-    `;
 
-    card.querySelector('.tx-delete-btn').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (confirm(`Delete "${exp.description}"?`)) {
-        await window.supabaseService.deleteExpense(exp.id);
-        showToast('Expense removed', 'normal');
-        await refreshData();
-      }
-    });
+    if (item.type === 'settlement') {
+      const st = item.raw;
+      card.className = 'transaction-card tx-settlement-card';
+      card.innerHTML = `
+        <div class="tx-left">
+          <div class="tx-cat-icon tx-settle-icon">🤝</div>
+          <div class="tx-info">
+            <span class="tx-title">${escapeHtml(item.title)}</span>
+            <span class="tx-subtitle">${escapeHtml(item.subtitle)}</span>
+          </div>
+        </div>
+        <div class="tx-right">
+          <span class="tx-amount tx-settle-amt">${formatCurrency(st.amount)}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="tx-split-tag tx-settle-tag">Settled</span>
+            <button class="tx-delete-btn" title="Delete settlement" data-id="${st.id}">
+              <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('.tx-delete-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (confirm(`Remove settlement of ${formatCurrency(st.amount)} between ${st.from_person} and ${st.to_person}?`)) {
+          await window.supabaseService.deleteSettlement(st.id);
+          showToast('Settlement removed', 'normal');
+          await refreshData();
+        }
+      });
+    } else {
+      // Expense item
+      const exp = item.raw;
+      const cat = CATEGORIES[exp.category] || CATEGORIES.misc;
+      const splitCount = exp.splits ? exp.splits.length : 5;
+      const splitLabel = exp.split_type === 'individual' 
+        ? `1-on-1 for ${exp.splits && exp.splits[0] ? exp.splits[0].person_name : 'friend'}`
+        : `Split between ${splitCount}`;
+
+      card.className = 'transaction-card';
+      card.innerHTML = `
+        <div class="tx-left">
+          <div class="tx-cat-icon">${cat.icon}</div>
+          <div class="tx-info">
+            <span class="tx-title">${escapeHtml(exp.description)}</span>
+            <span class="tx-subtitle">
+              <span class="tx-paidby-tag">${exp.paid_by}</span> paid • ${exp.date || 'Today'}
+            </span>
+          </div>
+        </div>
+        <div class="tx-right">
+          <span class="tx-amount">${formatCurrency(exp.amount)}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="tx-split-tag">${splitLabel}</span>
+            <button class="tx-delete-btn" title="Delete expense" data-id="${exp.id}">
+              <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('.tx-delete-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete "${exp.description}"?`)) {
+          await window.supabaseService.deleteExpense(exp.id);
+          showToast('Expense removed', 'normal');
+          await refreshData();
+        }
+      });
+    }
 
     elements.allTransactionsList.appendChild(card);
   });
+  if (window.lucide) lucide.createIcons();
 }
 
 // Render Friends Roster Cards (Sub-Tab B: Individual Expense)
@@ -873,7 +955,12 @@ function renderPersonCategoryBreakdown(memberName) {
 function renderPersonTransactions(memberName) {
   elements.dashPersonTransactionsList.innerHTML = '';
 
-  const list = appState.expenses.filter(exp => {
+  const expenseItems = (appState.expenses || []).map(exp => ({
+    type: 'expense',
+    timestamp: new Date(exp.created_at || exp.date || 0).getTime(),
+    raw: exp
+  })).filter(item => {
+    const exp = item.raw;
     const isPayer = exp.paid_by === memberName;
     const isParticipant = exp.splits && exp.splits.some(s => s.person_name === memberName);
     
@@ -881,6 +968,21 @@ function renderPersonTransactions(memberName) {
     if (appState.timelineFilter === 'shared') return isParticipant && !isPayer;
     return isPayer || isParticipant;
   });
+
+  const settlementItems = (appState.settlements || []).map(st => ({
+    type: 'settlement',
+    timestamp: new Date(st.created_at || 0).getTime(),
+    raw: st
+  })).filter(item => {
+    const st = item.raw;
+    const isPayer = st.from_person === memberName;
+    const isReceiver = st.to_person === memberName;
+    if (appState.timelineFilter === 'paid') return isPayer;
+    if (appState.timelineFilter === 'shared') return isReceiver;
+    return isPayer || isReceiver;
+  });
+
+  const list = [...expenseItems, ...settlementItems].sort((a, b) => b.timestamp - a.timestamp);
 
   if (list.length === 0) {
     elements.dashPersonTransactionsList.innerHTML = `
@@ -891,34 +993,58 @@ function renderPersonTransactions(memberName) {
     return;
   }
 
-  list.forEach(exp => {
-    const isPayer = exp.paid_by === memberName;
-    const userSplit = exp.splits ? exp.splits.find(s => s.person_name === memberName) : null;
-    const userShareAmt = userSplit ? userSplit.share_amount : 0;
-    const cat = CATEGORIES[exp.category] || CATEGORIES.misc;
-
+  list.forEach(item => {
     const card = document.createElement('div');
-    card.className = 'transaction-card';
-    card.innerHTML = `
-      <div class="tx-left">
-        <div class="tx-cat-icon">${cat.icon}</div>
-        <div class="tx-info">
-          <span class="tx-title">${escapeHtml(exp.description)}</span>
-          <span class="tx-subtitle">
-            ${isPayer ? `You paid ${formatCurrency(exp.amount)}` : `${exp.paid_by} paid`} • ${exp.date || 'Today'}
-          </span>
+    if (item.type === 'settlement') {
+      const st = item.raw;
+      const isPayer = st.from_person === memberName;
+      card.className = 'transaction-card tx-settlement-card';
+      card.innerHTML = `
+        <div class="tx-left">
+          <div class="tx-cat-icon tx-settle-icon">🤝</div>
+          <div class="tx-info">
+            <span class="tx-title">${isPayer ? `Settled payment to ${st.to_person}` : `Received settlement from ${st.from_person}`}</span>
+            <span class="tx-subtitle">
+              ${escapeHtml(st.notes || 'Settlement')} • ${st.created_at ? new Date(st.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }) : 'Today'}
+            </span>
+          </div>
         </div>
-      </div>
-      <div class="tx-right">
-        <span class="tx-amount" style="color: ${isPayer ? '#34d399' : '#fb7185'}">
-          ${isPayer ? `+${formatCurrency(exp.amount)}` : `-${formatCurrency(userShareAmt)}`}
-        </span>
-        <span class="tx-split-tag">${isPayer ? 'Paid by them' : 'Their share'}</span>
-      </div>
-    `;
+        <div class="tx-right">
+          <span class="tx-amount" style="color: ${isPayer ? '#fb7185' : '#34d399'}">
+            ${isPayer ? `-${formatCurrency(st.amount)}` : `+${formatCurrency(st.amount)}`}
+          </span>
+          <span class="tx-split-tag tx-settle-tag">${isPayer ? 'Settlement Paid' : 'Settlement Recv'}</span>
+        </div>
+      `;
+    } else {
+      const exp = item.raw;
+      const isPayer = exp.paid_by === memberName;
+      const userSplit = exp.splits ? exp.splits.find(s => s.person_name === memberName) : null;
+      const userShareAmt = userSplit ? userSplit.share_amount : 0;
+      const cat = CATEGORIES[exp.category] || CATEGORIES.misc;
 
+      card.className = 'transaction-card';
+      card.innerHTML = `
+        <div class="tx-left">
+          <div class="tx-cat-icon">${cat.icon}</div>
+          <div class="tx-info">
+            <span class="tx-title">${escapeHtml(exp.description)}</span>
+            <span class="tx-subtitle">
+              ${isPayer ? `You paid ${formatCurrency(exp.amount)}` : `${exp.paid_by} paid`} • ${exp.date || 'Today'}
+            </span>
+          </div>
+        </div>
+        <div class="tx-right">
+          <span class="tx-amount" style="color: ${isPayer ? '#34d399' : '#fb7185'}">
+            ${isPayer ? `+${formatCurrency(exp.amount)}` : `-${formatCurrency(userShareAmt)}`}
+          </span>
+          <span class="tx-split-tag">${isPayer ? 'Paid by them' : 'Their share'}</span>
+        </div>
+      `;
+    }
     elements.dashPersonTransactionsList.appendChild(card);
   });
+  if (window.lucide) lucide.createIcons();
 }
 
 // ----------------------------------------------------
@@ -982,20 +1108,20 @@ function setupEventListeners() {
   document.querySelectorAll('.quick-tag').forEach(tag => {
     tag.addEventListener('click', () => {
       const text = tag.textContent.trim();
-      if (text.includes('Dinner')) {
-        elements.expenseDescription.value = 'Dinner & Drinks';
+      if (text.includes('Cafe') || text.includes('Dinner')) {
+        elements.expenseDescription.value = 'Promenade French Cafe & Dinner';
         elements.expenseCategory.value = 'food';
-      } else if (text.includes('Fuel')) {
-        elements.expenseDescription.value = 'Fuel & Highway Toll';
+      } else if (text.includes('Scooter') || text.includes('Fuel')) {
+        elements.expenseDescription.value = 'Scooter Rentals & Fuel';
         elements.expenseCategory.value = 'travel';
-      } else if (text.includes('Stay')) {
-        elements.expenseDescription.value = 'Hotel / Resort Bill';
+      } else if (text.includes('Villa') || text.includes('Stay')) {
+        elements.expenseDescription.value = 'French Quarter Heritage Villa';
         elements.expenseCategory.value = 'stay';
-      } else if (text.includes('Watersports')) {
-        elements.expenseDescription.value = 'Watersports & Activity Tickets';
+      } else if (text.includes('Surfing') || text.includes('Watersports')) {
+        elements.expenseDescription.value = 'Paradise Beach Surfing & Boat Tickets';
         elements.expenseCategory.value = 'activities';
-      } else if (text.includes('Snacks')) {
-        elements.expenseDescription.value = 'Snacks & Beverages';
+      } else if (text.includes('Bakery') || text.includes('Auroville') || text.includes('Snacks')) {
+        elements.expenseDescription.value = 'Auroville Bakery & Souvenirs';
         elements.expenseCategory.value = 'shopping';
       }
       elements.expenseAmount.focus();
@@ -1043,7 +1169,7 @@ function setupEventListeners() {
 
   // Reset & Clear data
   elements.btnResetDemoData.addEventListener('click', async () => {
-    if (confirm('Reset trip back to starter Goa trip demo data?')) {
+    if (confirm('Reset trip back to starter Pondi trip demo data?')) {
       window.supabaseService.resetToDemo();
       await refreshData();
       closeSupabaseModal();
@@ -1080,6 +1206,8 @@ function switchTab(targetTab) {
   elements.addView.classList.toggle('hidden', targetTab !== 'add-view');
   elements.seeView.classList.toggle('hidden', targetTab !== 'see-view');
   elements.individualDashboardView.classList.toggle('hidden', targetTab !== 'dashboard-view');
+
+  if (window.lucide) lucide.createIcons();
 }
 
 function switchSubTab(subTab) {

@@ -295,8 +295,8 @@ function updateSplitPreview() {
 // Data Refresh
 async function refreshData() {
   try {
-    appState.expenses = await window.supabaseService.getExpenses();
-    appState.settlements = await window.supabaseService.getSettlements();
+    appState.expenses = (await window.supabaseService.getExpenses()) || [];
+    appState.settlements = (await window.supabaseService.getSettlements()) || [];
     renderAllViews();
   } catch (err) {
     console.error('Failed to refresh data:', err);
@@ -353,6 +353,8 @@ function calculateFinancials() {
     const found = GROUP_MEMBERS.find(m => m.name.toLowerCase() === String(name).trim().toLowerCase());
     return found ? found.name : null;
   };
+
+  let totalTripSpend = 0;
 
   // Process Expenses
   appState.expenses.forEach(exp => {

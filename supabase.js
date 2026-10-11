@@ -93,6 +93,10 @@ const SAMPLE_EXPENSES = [
     ]
   }
 ];
+
+function getFreshSampleExpenses() {
+  return JSON.parse(JSON.stringify(SAMPLE_EXPENSES));
+}
 // ============================================================
 // 🔑 SUPABASE CONFIGURATION: Paste your Supabase details here:
 // ============================================================
@@ -194,13 +198,14 @@ class SupabaseService {
     const local = localStorage.getItem(STORAGE_KEYS.EXPENSES);
     if (!local) {
       // Seed with sample data on first launch
-      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(SAMPLE_EXPENSES));
-      return SAMPLE_EXPENSES;
+      const fresh = getFreshSampleExpenses();
+      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(fresh));
+      return fresh;
     }
     try {
       return JSON.parse(local);
     } catch (e) {
-      return SAMPLE_EXPENSES;
+      return getFreshSampleExpenses();
     }
   }
 
@@ -358,17 +363,66 @@ class SupabaseService {
 
   async getLocalExpenses() {
     const local = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-    return local ? JSON.parse(local) : SAMPLE_EXPENSES;
+    return local ? JSON.parse(local) : getFreshSampleExpenses();
   }
 
-  resetToDemo() {
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(SAMPLE_EXPENSES));
+  async resetToDemo() {
+    const fresh = getFreshSampleExpenses();
+    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(fresh));
     localStorage.removeItem(STORAGE_KEYS.SETTLEMENTS);
+
+    if (this.isConnected && this.client) {
+      try {
+        // Clear Supabase tables
+        await this.client.from('settlements').delete().neq('amount', -999999);
+        await this.client.from('expense_splits').delete().neq('share_amount', -999999);
+        await this.client.from('expenses').delete().neq('amount', -999999);
+
+        // Re-populate Supabase with fresh demo expenses & splits
+        for (const exp of fresh) {
+          const { data: expRow, error: expErr } = await this.client
+            .from('expenses')
+            .insert([{
+              description: exp.description,
+              amount: exp.amount,
+              category: exp.category,
+              paid_by: exp.paid_by,
+              split_type: exp.split_type,
+              date: exp.date
+            }])
+            .select()
+            .single();
+
+          if (!expErr && expRow && exp.splits && exp.splits.length > 0) {
+            const splitRows = exp.splits.map(s => ({
+              expense_id: expRow.id,
+              person_name: s.person_name,
+              share_amount: s.share_amount
+            }));
+            await this.client.from('expense_splits').insert(splitRows);
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase reset demo error:', err);
+      }
+    }
+    return fresh;
   }
 
-  clearAllData() {
+  async clearAllData() {
     localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify([]));
     localStorage.removeItem(STORAGE_KEYS.SETTLEMENTS);
+
+    if (this.isConnected && this.client) {
+      try {
+        await this.client.from('settlements').delete().neq('amount', -999999);
+        await this.client.from('expense_splits').delete().neq('share_amount', -999999);
+        await this.client.from('expenses').delete().neq('amount', -999999);
+      } catch (err) {
+        console.warn('Supabase clear all error:', err);
+      }
+    }
+    return true;
   }
 }
 

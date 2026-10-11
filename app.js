@@ -69,6 +69,7 @@ const elements = {
   individualTargetGrid: document.getElementById('individualTargetGrid'),
   expenseDate: document.getElementById('expenseDate'),
   expenseNotes: document.getElementById('expenseNotes'),
+  btnResetExpenseForm: document.getElementById('btnResetExpenseForm'),
 
   // Everyone's View
   tripTotalAmount: document.getElementById('tripTotalAmount'),
@@ -1169,10 +1170,19 @@ function setupEventListeners() {
   // Copy SQL Schema
   elements.copySqlBtn.addEventListener('click', handleCopySql);
 
+  // Reset Expense Form Button
+  if (elements.btnResetExpenseForm) {
+    elements.btnResetExpenseForm.addEventListener('click', () => {
+      resetExpenseForm();
+      showToast('Form reset to default', 'normal');
+    });
+  }
+
   // Reset & Clear data
   elements.btnResetDemoData.addEventListener('click', async () => {
     if (confirm('Reset trip back to starter Pondi trip demo data?')) {
-      window.supabaseService.resetToDemo();
+      await window.supabaseService.resetToDemo();
+      resetExpenseForm();
       await refreshData();
       closeSupabaseModal();
       showToast('Demo data restored!', 'success');
@@ -1181,12 +1191,33 @@ function setupEventListeners() {
 
   elements.btnClearAllData.addEventListener('click', async () => {
     if (confirm('Clear all trip expenses and start fresh? This cannot be undone.')) {
-      window.supabaseService.clearAllData();
+      await window.supabaseService.clearAllData();
+      resetExpenseForm();
       await refreshData();
       closeSupabaseModal();
       showToast('Trip data cleared', 'normal');
     }
   });
+}
+
+// Reset Add Expense Form to clean default state
+function resetExpenseForm() {
+  elements.expenseForm.reset();
+  elements.expenseDate.value = new Date().toISOString().split('T')[0];
+  appState.selectedPayer = GROUP_MEMBERS[0].name;
+  appState.splitMode = 'split';
+  appState.selectedSplitMembers = GROUP_MEMBERS.map(m => m.name);
+  appState.selectedIndividualTarget = GROUP_MEMBERS[1] ? GROUP_MEMBERS[1].name : GROUP_MEMBERS[0].name;
+
+  elements.btnModeSplit.classList.add('active');
+  elements.btnModeIndividual.classList.remove('active');
+  elements.splitExpenseDetails.classList.remove('hidden');
+  elements.individualExpenseDetails.classList.add('hidden');
+
+  renderFormPayerPills();
+  renderFormSplitGrid();
+  renderFormIndividualTargetGrid();
+  updateSplitPreview();
 }
 
 function setTimelineFilter(filter, activeBtn) {
@@ -1279,10 +1310,8 @@ async function handleAddExpenseSubmit(e) {
     await window.supabaseService.addExpense(newExpenseData);
     showToast(`Expense ₹${amount} saved successfully!`, 'success');
 
-    // Reset Form
-    elements.expenseForm.reset();
-    elements.expenseDate.value = new Date().toISOString().split('T')[0];
-    updateSplitPreview();
+    // Reset Form to clean defaults
+    resetExpenseForm();
 
     // Refresh and auto-navigate to See Expense
     await refreshData();

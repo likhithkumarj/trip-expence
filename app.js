@@ -163,14 +163,15 @@ async function initApp() {
   renderFormIndividualTargetGrid();
   populateSettleDropdowns();
 
+  // Initialize Supabase Connection
+  await window.supabaseService.initClient();
+  updateConnectionBadge();
+
   // Load Data
   await refreshData();
 
   // Setup Event Listeners
   setupEventListeners();
-
-  // Check Supabase status
-  updateConnectionBadge();
 }
 
 // Populate Settle Modal Dropdowns

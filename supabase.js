@@ -93,6 +93,12 @@ const SAMPLE_EXPENSES = [
     ]
   }
 ];
+// ============================================================
+// 🔑 SUPABASE CONFIGURATION: Paste your Supabase details here:
+// ============================================================
+const SUPABASE_PROJECT_URL = 'https://akutsgressuehsmtvbxb.supabase.co'; // e.g. 'https://xyzcompany.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_RS9RzmDE8qYusihq4BQoZw_v53-OXZL';    // e.g. 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+// ============================================================
 
 class SupabaseService {
   constructor() {
@@ -105,9 +111,19 @@ class SupabaseService {
   loadConfig() {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.CONFIG);
-      return saved ? JSON.parse(saved) : { url: '', anonKey: '' };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.url && parsed.anonKey) return parsed;
+      }
+      return { 
+        url: SUPABASE_PROJECT_URL, 
+        anonKey: SUPABASE_ANON_KEY 
+      };
     } catch (e) {
-      return { url: '', anonKey: '' };
+      return { 
+        url: SUPABASE_PROJECT_URL, 
+        anonKey: SUPABASE_ANON_KEY 
+      };
     }
   }
 

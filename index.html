@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SquadSplit 🌴 | Group Trip Expense Tracker</title>
+  <meta name="description" content="Mobile-first trip expense tracker for friends with Supabase backend. Split expenses, track individual balances, and settle up easily.">
+  <meta name="theme-color" content="#0f172a">
+
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Supabase JS Client via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- App Container (Mobile Frame Constraint for Desktop with Fluid Mobile-First Layout) -->
+  <div class="app-wrapper">
+
+    <!-- Top App Bar -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="trip-badge">
+          <span class="trip-icon">🌴</span>
+          <div class="trip-titles">
+            <h1 class="trip-name">Friends Getaway</h1>
+            <span class="trip-subtitle">5 Travelers • Goa Roadtrip</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Supabase Cloud Connection Status Pill -->
+        <button id="supabaseStatusBtn" class="status-pill status-local" title="Supabase Cloud Status">
+          <span class="status-dot"></span>
+          <span class="status-text" id="statusLabel">Local Storage</span>
+          <i data-lucide="database" class="icon-sm"></i>
+        </button>
+
+        <!-- Quick Reset/Menu -->
+        <button id="tripMenuBtn" class="icon-btn" title="Trip Options">
+          <i data-lucide="more-vertical"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Navigation Bar (Two Core Options: "Add Expense" & "See Expense") -->
+    <nav class="main-tabs" role="tablist">
+      <button class="tab-btn active" id="tabAddExpense" role="tab" aria-selected="true" data-tab="add-view">
+        <i data-lucide="plus-circle"></i>
+        <span>Add Expense</span>
+      </button>
+      <button class="tab-btn" id="tabSeeExpense" role="tab" aria-selected="false" data-tab="see-view">
+        <i data-lucide="receipt"></i>
+        <span>See Expense</span>
+        <span class="badge" id="expensesCountBadge">5</span>
+      </button>
+    </nav>
+
+    <!-- Content Sections -->
+    <main class="content-container">
+
+      <!-- ============================================== -->
+      <!-- OPTION 1: ADD EXPENSE VIEW                     -->
+      <!-- ============================================== -->
+      <section id="addView" class="view-section active">
+        <div class="form-card">
+          <div class="form-header">
+            <h2>Add New Expense</h2>
+            <p>Log a trip spending & choose how to split it</p>
+          </div>
+
+          <form id="expenseForm">
+            <!-- Amount Input (Bold Hero Input) -->
+            <div class="amount-hero-input">
+              <label for="expenseAmount">Amount</label>
+              <div class="currency-input-wrap">
+                <span class="currency-symbol">₹</span>
+                <input 
+                  type="number" 
+                  id="expenseAmount" 
+                  step="any" 
+                  min="1" 
+                  placeholder="0.00" 
+                  required 
+                  autocomplete="off"
+                  inputmode="decimal"
+                />
+              </div>
+            </div>
+
+            <!-- Description Input with Quick Tags -->
+            <div class="form-group">
+              <label for="expenseDescription">Description</label>
+              <div class="input-with-icon">
+                <i data-lucide="file-text" class="input-icon"></i>
+                <input 
+                  type="text" 
+                  id="expenseDescription" 
+                  placeholder="e.g. Seafood Dinner, Fuel, Toll, Resort" 
+                  required 
+                />
+              </div>
+              <div class="quick-tags">
+                <button type="button" class="quick-tag">🍔 Dinner</button>
+                <button type="button" class="quick-tag">⛽ Fuel</button>
+                <button type="button" class="quick-tag">🏨 Stay</button>
+                <button type="button" class="quick-tag">🏄 Watersports</button>
+                <button type="button" class="quick-tag">🛒 Snacks</button>
+              </div>
+            </div>
+
+            <!-- Category Selector (Dropdown / Grid) -->
+            <div class="form-group">
+              <label for="expenseCategory">Category</label>
+              <div class="category-select-wrapper">
+                <select id="expenseCategory" required>
+                  <option value="food" data-icon="utensils">🍔 Food & Dining</option>
+                  <option value="travel" data-icon="car">🚗 Travel & Fuel</option>
+                  <option value="stay" data-icon="hotel">🏨 Stay & Hotel</option>
+                  <option value="activities" data-icon="palmtree">🏄 Activities & Tickets</option>
+                  <option value="shopping" data-icon="shopping-bag">🛒 Shopping & Groceries</option>
+                  <option value="misc" data-icon="layers">📦 Misc & Others</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Who Paid? (5 Friends Avatars / Select) -->
+            <div class="form-group">
+              <label>Who Paid?</label>
+              <div class="payer-selector" id="payerSelector">
+                <!-- Dynamically generated friend radio pills -->
+              </div>
+            </div>
+
+            <!-- Split Option Selector (Split Expense vs Individual Expense) -->
+            <div class="split-mode-section">
+              <label class="section-label">Split Type</label>
+              <div class="split-toggle-group">
+                <button type="button" class="split-btn active" id="btnModeSplit" data-mode="split">
+                  <i data-lucide="users"></i>
+                  <span>Split Expense</span>
+                </button>
+                <button type="button" class="split-btn" id="btnModeIndividual" data-mode="individual">
+                  <i data-lucide="user-check"></i>
+                  <span>Individual Expense</span>
+                </button>
+              </div>
+
+              <!-- Sub-mode: When "Split Expense" is active -->
+              <div id="splitExpenseDetails" class="split-details-box">
+                <div class="split-details-header">
+                  <span class="sub-label">Include in split:</span>
+                  <button type="button" id="selectAllMembersBtn" class="btn-text">Select All (5)</button>
+                </div>
+                <div class="members-checkbox-grid" id="splitMembersGrid">
+                  <!-- Dynamically generated member checkboxes -->
+                </div>
+                <div class="split-summary-banner" id="splitSummaryBanner">
+                  <span>₹0.00 / person (5 friends)</span>
+                </div>
+              </div>
+
+              <!-- Sub-mode: When "Individual Expense" is active -->
+              <div id="individualExpenseDetails" class="split-details-box hidden">
+                <span class="sub-label">Paid specifically for which person?</span>
+                <p class="field-hint">Expense will be 100% assigned to this individual's debt.</p>
+                <div class="individual-target-grid" id="individualTargetGrid">
+                  <!-- Radio cards for the 5 individuals -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Date Picker (Optional details) -->
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="expenseDate">Date</label>
+                <div class="input-with-icon">
+                  <i data-lucide="calendar" class="input-icon"></i>
+                  <input type="date" id="expenseDate">
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="expenseNotes">Notes (Optional)</label>
+                <div class="input-with-icon">
+                  <i data-lucide="sticky-note" class="input-icon"></i>
+                  <input type="text" id="expenseNotes" placeholder="Bill details...">
+                </div>
+              </div>
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" class="btn-primary submit-expense-btn">
+              <i data-lucide="check"></i>
+              <span>Save & Record Expense</span>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- OPTION 2: SEE EXPENSE VIEW                     -->
+      <!-- ============================================== -->
+      <section id="seeView" class="view-section hidden">
+        
+        <!-- Sub-Navigation: "Everyone's Expense" vs "Individual Expense" -->
+        <div class="sub-nav-tabs">
+          <button class="sub-tab-btn active" id="subTabEveryone" data-subtab="everyone-content">
+            <i data-lucide="pie-chart"></i>
+            <span>Everyone's Expense</span>
+          </button>
+          <button class="sub-tab-btn" id="subTabIndividual" data-subtab="individual-content">
+            <i data-lucide="users"></i>
+            <span>Individual Expense</span>
+          </button>
+        </div>
+
+        <!-- ------------------------------------------------ -->
+        <!-- SUB-TAB A: EVERYONE'S EXPENSE (Trip Overview)    -->
+        <!-- ------------------------------------------------ -->
+        <div id="everyoneContent" class="sub-tab-pane active">
+          
+          <!-- Trip Overview Hero Card -->
+          <div class="trip-overview-card">
+            <div class="overview-top">
+              <div>
+                <span class="metric-label">TOTAL TRIP SPEND</span>
+                <h3 class="metric-hero-value" id="tripTotalAmount">₹0</h3>
+              </div>
+              <div class="overview-badge">
+                <i data-lucide="trending-up"></i>
+                <span id="tripAvgPerPerson">₹0 / person</span>
+              </div>
+            </div>
+            
+            <!-- Quick Summary Breakdown -->
+            <div class="overview-stats-grid">
+              <div class="stat-cell">
+                <span class="stat-num" id="totalExpenseCount">0</span>
+                <span class="stat-name">Expenses</span>
+              </div>
+              <div class="stat-cell">
+                <span class="stat-num">5</span>
+                <span class="stat-name">Members</span>
+              </div>
+              <div class="stat-cell">
+                <span class="stat-num" id="settlementCount">0</span>
+                <span class="stat-name">Settled</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Spending Bar -->
+          <div class="card-section">
+            <div class="section-heading">
+              <i data-lucide="bar-chart-2"></i>
+              <h4>Category Breakdown</h4>
+            </div>
+            <div class="category-bars-list" id="categoryBarsList">
+              <!-- Dynamically populated category progress bars -->
+            </div>
+          </div>
+
+          <!-- Friends Balance Snapshot Cards -->
+          <div class="card-section">
+            <div class="section-heading">
+              <i data-lucide="scale"></i>
+              <h4>Net Balances</h4>
+            </div>
+            <div class="balances-summary-list" id="balancesSummaryList">
+              <!-- List of 5 persons with + / - balances -->
+            </div>
+          </div>
+
+          <!-- Smart Settlement Plan (Who Owes Whom) -->
+          <div class="card-section highlight-section">
+            <div class="section-heading flex-between">
+              <div class="heading-left">
+                <i data-lucide="arrow-left-right"></i>
+                <h4>Smart Settlements</h4>
+              </div>
+              <span class="pill-mini">Minimum Transfers</span>
+            </div>
+            <p class="section-desc">Easiest way to square up without complicated back-and-forth transfers:</p>
+            <div class="settlement-cards-list" id="settlementPlanList">
+              <!-- Cards showing: Person A pays Person B ₹Amount -->
+            </div>
+          </div>
+
+          <!-- All Transactions Feed -->
+          <div class="card-section">
+            <div class="section-heading flex-between">
+              <div class="heading-left">
+                <i data-lucide="list"></i>
+                <h4>Expense History</h4>
+              </div>
+              <span class="history-count" id="historyCountLabel">5 items</span>
+            </div>
+
+            <!-- Search and Filter Bar -->
+            <div class="filter-bar">
+              <div class="search-wrap">
+                <i data-lucide="search"></i>
+                <input type="text" id="expenseSearchInput" placeholder="Search by name, place...">
+              </div>
+              <select id="expenseCategoryFilter">
+                <option value="all">All Categories</option>
+                <option value="food">Food</option>
+                <option value="travel">Travel</option>
+                <option value="stay">Stay</option>
+                <option value="activities">Activities</option>
+                <option value="shopping">Shopping</option>
+                <option value="misc">Misc</option>
+              </select>
+            </div>
+
+            <!-- Transactions List -->
+            <div class="transactions-list" id="allTransactionsList">
+              <!-- Dynamically populated transaction cards -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ------------------------------------------------ -->
+        <!-- SUB-TAB B: INDIVIDUAL EXPENSE (5 Friends Picker) -->
+        <!-- ------------------------------------------------ -->
+        <div id="individualContent" class="sub-tab-pane hidden">
+          <div class="individual-intro-box">
+            <h3>Individual Profiles</h3>
+            <p>Select any friend to view their dedicated mobile dashboard, spending, debts, and settlement ledger.</p>
+          </div>
+
+          <!-- The 5 Persons Cards Grid -->
+          <div class="friends-roster-grid" id="friendsRosterGrid">
+            <!-- 5 Person cards generated: Likhith, Chiranth, Benny, Shamanth, Karthik -->
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ============================================== -->
+      <!-- MOBILE-FIRST DEDICATED INDIVIDUAL DASHBOARD    -->
+      <!-- Opens when clicking any of the 5 friends       -->
+      <!-- ============================================== -->
+      <section id="individualDashboardView" class="view-section hidden">
+        
+        <!-- Dashboard Top Navigation with Back Button -->
+        <div class="dashboard-nav-bar">
+          <button id="btnBackToIndividualList" class="back-link-btn">
+            <i data-lucide="arrow-left"></i>
+            <span>All Friends</span>
+          </button>
+          <span class="dash-view-title">Member Dashboard</span>
+          <button id="btnQuickSettleDashboard" class="btn-pill-action">
+            <i data-lucide="hand-coins"></i>
+            <span>Settle</span>
+          </button>
+        </div>
+
+        <!-- Mobile Profile Hero Banner -->
+        <div class="person-hero-card" id="personHeroCard">
+          <div class="person-hero-avatar-wrap">
+            <div class="person-avatar-large" id="dashAvatar">L</div>
+            <div class="status-indicator-dot" id="dashStatusDot"></div>
+          </div>
+
+          <h2 class="person-name" id="dashPersonName">Likhith</h2>
+          <div class="person-status-badge" id="dashStatusBadge">
+            <span>Gets Back ₹1,200</span>
+          </div>
+
+          <!-- 3 KPI metric tiles -->
+          <div class="dash-kpi-row">
+            <div class="kpi-tile">
+              <span class="kpi-label">Paid Out</span>
+              <span class="kpi-val" id="dashTotalPaid">₹0</span>
+            </div>
+            <div class="kpi-tile">
+              <span class="kpi-label">Their Share</span>
+              <span class="kpi-val" id="dashTotalShare">₹0</span>
+            </div>
+            <div class="kpi-tile highlight-kpi">
+              <span class="kpi-label">Net Balance</span>
+              <span class="kpi-val" id="dashNetBalance">₹0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settlement Action Cards for This Person -->
+        <div class="card-section">
+          <div class="section-heading">
+            <i data-lucide="wallet"></i>
+            <h4>Settlement Status for <span id="dashSectionPersonName">Member</span></h4>
+          </div>
+
+          <!-- Receivables (Who owes this person) -->
+          <div class="settle-group-box">
+            <h5 class="settle-group-title text-green">
+              <i data-lucide="arrow-down-left"></i>
+              Owed to <span class="current-dash-name">Member</span> (Receiving)
+            </h5>
+            <div class="settle-items-list" id="dashReceivablesList">
+              <!-- Dynamically populated: e.g. Chiranth owes Likhith ₹450 -->
+            </div>
+          </div>
+
+          <!-- Payables (Who this person owes) -->
+          <div class="settle-group-box">
+            <h5 class="settle-group-title text-red">
+              <i data-lucide="arrow-up-right"></i>
+              <span class="current-dash-name">Member</span> Owes (To Pay)
+            </h5>
+            <div class="settle-items-list" id="dashPayablesList">
+              <!-- Dynamically populated: e.g. Likhith owes Benny ₹200 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Category Breakdown for this person -->
+        <div class="card-section">
+          <div class="section-heading">
+            <i data-lucide="pie-chart"></i>
+            <h4>Spending Categories</h4>
+          </div>
+          <div class="category-bars-list" id="dashCategoryBars">
+            <!-- Bars for this person's consumption -->
+          </div>
+        </div>
+
+        <!-- Activity Timeline / Transactions Involving this Person -->
+        <div class="card-section">
+          <div class="section-heading flex-between">
+            <div class="heading-left">
+              <i data-lucide="activity"></i>
+              <h4>Activity & Transactions</h4>
+            </div>
+            <div class="timeline-tabs">
+              <button class="pill-chip active" id="timelineFilterAll">All</button>
+              <button class="pill-chip" id="timelineFilterPaid">Paid by Them</button>
+              <button class="pill-chip" id="timelineFilterShared">Shared</button>
+            </div>
+          </div>
+          
+          <div class="transactions-list" id="dashPersonTransactionsList">
+            <!-- Dynamically populated list of transactions -->
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- ============================================== -->
+    <!-- SETTLE UP MODAL                                -->
+    <!-- ============================================== -->
+    <div class="modal-overlay hidden" id="settleModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-wrap">
+            <i data-lucide="check-circle" class="modal-icon-success"></i>
+            <h3>Record Settlement</h3>
+          </div>
+          <button class="close-modal-btn" id="closeSettleModal">&times;</button>
+        </div>
+        <form id="settleForm">
+          <p class="modal-subtitle">Record cash or UPI transfer between friends to balance accounts.</p>
+
+          <div class="form-group">
+            <label>Who Paid? (Payer)</label>
+            <select id="settleFromPerson" required class="select-styled">
+              <!-- 5 persons -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Paid To? (Receiver)</label>
+            <select id="settleToPerson" required class="select-styled">
+              <!-- 5 persons -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Amount (₹)</label>
+            <div class="currency-input-wrap">
+              <span class="currency-symbol">₹</span>
+              <input type="number" id="settleAmount" step="any" min="1" placeholder="0.00" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Note / Reference (Optional)</label>
+            <input type="text" id="settleNote" placeholder="GooglePay, PhonePe, Cash...">
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" id="cancelSettleBtn">Cancel</button>
+            <button type="submit" class="btn-primary">
+              <i data-lucide="check"></i>
+              <span>Confirm Settlement</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- SUPABASE CONFIG & TRIP SETTINGS MODAL          -->
+    <!-- ============================================== -->
+    <div class="modal-overlay hidden" id="supabaseModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-wrap">
+            <i data-lucide="database" class="modal-icon-db"></i>
+            <h3>Supabase Cloud Settings</h3>
+          </div>
+          <button class="close-modal-btn" id="closeSupabaseModal">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <p class="modal-subtitle">Connect your Supabase project to sync trip expenses in real-time with friends.</p>
+
+          <div class="status-callout" id="modalStatusCallout">
+            <div class="status-badge-inline">
+              <span class="status-dot"></span>
+              <strong id="modalConnectionStatus">Using Local Storage Mode</strong>
+            </div>
+            <p id="modalStatusDetail">All your expenses are saved in your browser. Enter your Supabase credentials below to sync live with Supabase!</p>
+          </div>
+
+          <form id="supabaseConfigForm">
+            <div class="form-group">
+              <label for="supabaseUrl">Supabase Project URL</label>
+              <input 
+                type="url" 
+                id="supabaseUrl" 
+                placeholder="https://xyzcompany.supabase.co" 
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="supabaseAnonKey">Supabase Anon Public API Key</label>
+              <input 
+                type="password" 
+                id="supabaseAnonKey" 
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." 
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="modal-actions-column">
+              <button type="submit" class="btn-primary">
+                <i data-lucide="plug"></i>
+                <span>Connect & Test Supabase</span>
+              </button>
+
+              <button type="button" id="copySqlBtn" class="btn-secondary">
+                <i data-lucide="copy"></i>
+                <span>Copy SQL Schema for Supabase</span>
+              </button>
+            </div>
+          </form>
+
+          <hr class="modal-divider">
+
+          <div class="danger-zone">
+            <h4>Demo & Data Management</h4>
+            <div class="modal-actions-row">
+              <button type="button" id="btnResetDemoData" class="btn-outline">
+                <i data-lucide="rotate-ccw"></i>
+                <span>Reset Demo Trip Data</span>
+              </button>
+              <button type="button" id="btnClearAllData" class="btn-outline-danger">
+                <i data-lucide="trash-2"></i>
+                <span>Clear All Expenses</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="supabase.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // Initialize Lucide icons on DOM ready
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
